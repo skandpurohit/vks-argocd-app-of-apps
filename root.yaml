@@ -14,4 +14,3 @@ spec:
   namespaceResourceWhitelist:
     - {group: argoproj.io, kind: Application}
     - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity}
----
