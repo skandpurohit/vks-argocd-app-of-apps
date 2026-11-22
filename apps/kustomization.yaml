@@ -3,3 +3,4 @@ kind: Kustomization
 # The root Application syncs this directory. One child Application per layer; the list is the contract.
 resources:
   - clus01.yaml
+  - attach.yaml

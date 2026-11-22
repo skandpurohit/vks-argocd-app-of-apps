@@ -1,0 +1,24 @@
+# Layer 2: attach the VKS cluster to Argo CD (creates the cluster Secret named cl01).
+# The ManagedEntity lives in Argo's own namespace, hence the argocd-instance-1 destination.
+# prune:false: deleting the ManagedEntity would detach cl01 and orphan every workload app.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cl01-attach
+  namespace: argocd-instance-1
+spec:
+  project: platform-root
+  source:
+    repoURL: https://github.com/skandpurohit/vks-gitops.git
+    targetRevision: main
+    path: attach
+  destination:
+    name: argocd-instance-1
+    namespace: argocd-instance-1
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff: {duration: 30s, factor: 2, maxDuration: 10m}
