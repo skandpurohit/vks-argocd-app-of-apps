@@ -32,3 +32,60 @@ spec:
     - {group: cluster.x-k8s.io, kind: Cluster}
     - {group: addons.kubernetes.vmware.com, kind: AddonInstall}
     - {group: addons.kubernetes.vmware.com, kind: AddonConfig}
+---
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workloads
+  namespace: argocd-instance-1
+spec:
+  description: Applications deployed into the VKS cluster cl01.
+  sourceRepos:
+    - https://github.com/skandpurohit/vks-gitops.git
+  destinations:
+    - {name: cl01, namespace: demo-app}
+    - {name: cl01, namespace: demo-tls}
+    - {name: cl01, namespace: online-boutique}
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}     # needed for CreateNamespace=true
+  namespaceResourceWhitelist:
+    - {group: "*", kind: "*"}
+---
+# ============ 2. Register workload-ns: where Cluster and AddonInstall objects live =================
+# This is the "register the vSphere Namespace" step. Argo CD Service attaches an EXISTING Supervisor
+# Namespace; it documents no way to create one.
+# [Doc] Argo CD Service 1.2.0+: in-cluster endpoint https://kubernetes.default.svc/?context=<ns>
+#       (traffic stays inside the Supervisor, never through the Supervisor VIP).
+# The RoleBinding is the one thing that can never come from Git: Argo has no rights in this namespace
+# until someone grants them. `edit` on this ONE namespace is the grant the 9.1.1 docs use.
+# [Verify] whether the ManagedEntity alone is enough (README, Verify 2).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-k8s-sa-edit
+  namespace: workload-ns
+subjects:
+  - kind: ServiceAccount
+    name: argocd-k8s-sa              # [Doc] created by Argo CD Service >= 1.2.0
+    namespace: argocd-instance-1
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+---
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: ns-workload-ns
+  namespace: argocd-instance-1
+spec:
+  clusterName: workload-ns           # destination name used by apps/cluster.yaml and apps/addons.yaml
+  argoCDProject: vks-cluster         # project-scoped Secret: only the vks-cluster project can use it
+  secretLabels:
+    type: supervisor
+  targetRef:
+    apiGroup: ""
+    kind: Namespace
+    name: workload-ns
