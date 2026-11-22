@@ -1,0 +1,17 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-root
+  namespace: argocd-instance-1
+spec:
+  description: Root app-of-apps and cluster attachment. Admin only.
+  sourceRepos:
+    - https://github.com/skandpurohit/vks-argocd-app-of-apps.git
+  destinations:
+    - {name: argocd-instance-1, namespace: argocd-instance-1}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: argoproj.io, kind: Application}
+    - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity}
+---
