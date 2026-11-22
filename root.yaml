@@ -1,3 +1,21 @@
+# THE ONLY FILE YOU APPLY:   kubectl apply -f root.yaml
+# Run it as a Supervisor admin. It needs rights in BOTH namespaces below, which is why a human applies it.
+#
+# Prereqs (not in this file, Argo CD cannot create them):
+#   - Supervisor Namespaces `argocd-instance-1` and `workload-ns` exist (storage policy, VM classes, content library on workload-ns)
+#   - an Argo CD instance runs in argocd-instance-1 (see README "Prerequisites")
+#
+# Inside this file the order matters only to a human reader: 1 projects, 2 register workload-ns,
+# 3 register Argo's own namespace, 4 the root app that starts everything else.
+#
+# Forking? Change repoURL in this file and in apps/*.yaml (README quick start has the sed one-liner).
+
+# ============ 1. AppProjects: three blast radiuses ==================================================
+#   platform-root  root app + attach app   -> may only create Application and ManagedEntity objects
+#   vks-cluster    cluster + add-ons       -> may only create Cluster, AddonInstall, AddonConfig
+#   workloads      apps on the VKS cluster -> namespaced objects + Namespace, nothing else
+# Human-applied on purpose: an Application can name ANY project, so projects must not be created by
+# the thing they constrain. (Trade-off and how to move them into Git: README, "Decisions".)
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
@@ -13,8 +31,7 @@ spec:
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
     - {group: argoproj.io, kind: Application}
-    - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity} 
----
+    - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
@@ -33,25 +50,24 @@ spec:
     - {group: addons.kubernetes.vmware.com, kind: AddonInstall}
     - {group: addons.kubernetes.vmware.com, kind: AddonConfig}
 ---
----
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: workloads
   namespace: argocd-instance-1
 spec:
-  description: Applications deployed into the VKS cluster cl01.
+  description: Applications deployed into the VKS cluster clus01.
   sourceRepos:
-    - https://github.com/skandpurohit/vks-gitops.git
+    - https://github.com/skandpurohit/vks-argocd-app-of-apps.git
   destinations:
-    - {name: cl01, namespace: demo-app}
-    - {name: cl01, namespace: demo-tls}
-    - {name: cl01, namespace: online-boutique}
+    - {name: clus01, namespace: demo-app}
+    - {name: clus01, namespace: demo-tls}
+    - {name: clus01, namespace: online-boutique}
   clusterResourceWhitelist:
     - {group: "", kind: Namespace}     # needed for CreateNamespace=true
   namespaceResourceWhitelist:
     - {group: "*", kind: "*"}
----
+
 # ============ 2. Register workload-ns: where Cluster and AddonInstall objects live =================
 # This is the "register the vSphere Namespace" step. Argo CD Service attaches an EXISTING Supervisor
 # Namespace; it documents no way to create one.
@@ -59,7 +75,9 @@ spec:
 #       (traffic stays inside the Supervisor, never through the Supervisor VIP).
 # The RoleBinding is the one thing that can never come from Git: Argo has no rights in this namespace
 # until someone grants them. `edit` on this ONE namespace is the grant the 9.1.1 docs use.
-# [Verify] whether the ManagedEntity alone is enough (README, Verify 2).
+# [Lab-verified 2026-11-22] The ManagedEntity alone is NOT enough. Its controller stays phase Failed with
+# SupervisorServiceAccountBound=False (MissingRoleBinding) and creates no cluster Secret until
+# argocd-k8s-sa is bound to a role in the target namespace.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -89,8 +107,66 @@ spec:
     apiGroup: ""
     kind: Namespace
     name: workload-ns
+
+# ============ 3. Register argocd-instance-1: the door and the key into Argo's OWN namespace =========
+# Every Application has ONE destination: the namespace where its manifests are applied.
+#   clus01-cluster, clus01-addons            -> workload-ns        (registered in section 2)
+#   nginx, nginx-tls, online-boutique    -> clus01               (registered later by clus01-attach)
+#   root, clus01-attach                    -> argocd-instance-1  (THIS section)
+# root creates Application objects and clus01-attach creates a ManagedEntity. Both live in Argo's own
+# namespace, not in workload-ns. Section 2 opens workload-ns only: Argo CD Service registers each
+# Supervisor Namespace as its own isolated endpoint (release notes 1.2.0), so this namespace needs its own:
+#   door = the ManagedEntity below  (creates the cluster Secret named argocd-instance-1)
+#   key  = the Role + RoleBinding   (lets argocd-k8s-sa create Applications and ManagedEntities here;
+#                                    the stock `edit` ClusterRole probably does not cover Argo CRDs [Inference])
+# [Lab-verified 2026-11-22] Both are required. Door: the built-in in-cluster endpoint is disabled on this
+# Argo CD ("cluster https://kubernetes.default.svc is disabled"). Key: without the RoleBinding the entity
+# stays Failed (MissingRoleBinding), so there is no cluster Secret and root reports "no clusters with this name".
+# Diagnose any entity:  kubectl -n argocd-instance-1 get managedentity <name> -o yaml   (read status.conditions)
 ---
-# ============ 3. The root app: syncs apps/, one child Application per layer =========================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-k8s-sa-app-manager
+  namespace: argocd-instance-1
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["argocd-service.vsphere.vmware.com"]
+    resources: ["managedentities"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-k8s-sa-app-manager
+  namespace: argocd-instance-1
+subjects:
+  - kind: ServiceAccount
+    name: argocd-k8s-sa
+    namespace: argocd-instance-1
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-k8s-sa-app-manager
+---
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: ns-argocd-instance-1
+  namespace: argocd-instance-1
+spec:
+  clusterName: argocd-instance-1
+  argoCDProject: platform-root
+  secretLabels:
+    type: platform
+  targetRef:
+    apiGroup: ""
+    kind: Namespace
+    name: argocd-instance-1
+
+# ============ 4. The root app: syncs apps/, one child Application per layer =========================
 # prune: true is safe here: the cluster, attach and add-on children carry no finalizer, so pruning an
 # Application object from Git never deletes the Cluster, add-ons or ManagedEntity.
 ---
@@ -115,19 +191,3 @@ spec:
     retry:
       limit: 10
       backoff: {duration: 30s, factor: 2, maxDuration: 10m}
----
----
-apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
-kind: ManagedEntity
-metadata:
-  name: ns-argocd-instance-1
-  namespace: argocd-instance-1
-spec:
-  clusterName: argocd-instance-1
-  argoCDProject: platform-root
-  secretLabels:
-    type: platform
-  targetRef:
-    apiGroup: ""
-    kind: Namespace
-    name: argocd-instance-1
