@@ -106,7 +106,7 @@ spec:
     targetRevision: main             # PROD: pin a tag or SHA and bump it by pull request
     path: apps
   destination:
-    server: https://kubernetes.default.svc   # TEST: was name: argocd-instance-1
+    name: argocd-instance-1
     namespace: argocd-instance-1
   syncPolicy:
     automated:
