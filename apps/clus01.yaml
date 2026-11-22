@@ -1,0 +1,31 @@
+# Layer 1: build the VKS cluster in the Supervisor Namespace you registered.
+# No finalizer + prune:false + Delete=false on the Cluster = Argo CD cannot delete the cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clus01-cluster
+  namespace: argocd-instance-1
+spec:
+  project: vks-cluster
+  source:
+    repoURL: https://github.com/skandpurohit/vks-argocd-app-of-apps.git
+    targetRevision: main
+    path: cluster
+  destination:
+    name: workload-ns
+    namespace: workload-ns
+  # VKS can rebase classRef to a newer patched ClusterClass; do not let selfHeal fight it. [Verify]
+  ignoreDifferences:
+    - group: cluster.x-k8s.io
+      kind: Cluster
+      jsonPointers:
+        - /spec/topology/classRef
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff: {duration: 30s, factor: 2, maxDuration: 10m}

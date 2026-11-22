@@ -1,0 +1,22 @@
+# Registers the VKS cluster cl01 as an Argo CD destination named `cl01`.
+# Lives in Argo's own namespace (that is where ManagedEntity objects go), so apps/attach.yaml
+# targets argocd-instance-1, not the cluster.
+#
+# [Doc] targetRef.namespace is required when the target is a VKS cluster.
+# [Verify] timing: the entity may sit Pending until cl01 is Ready. The attach app retries, and the
+#          workload apps report a comparison error ("cluster not found") until the Secret exists.
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: clus01
+  namespace: argocd-instance-1
+spec:
+  clusterName: clus01                  # the destination name used by every app in apps/nginx*.yaml etc.
+  argoCDProject: workloads           # project-scoped Secret: only the workloads project can deploy to clus01
+  secretLabels:
+    env: lab
+  targetRef:
+    apiGroup: cluster.x-k8s.io
+    kind: Cluster
+    name: clus01
+    namespace: workload-ns

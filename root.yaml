@@ -89,3 +89,29 @@ spec:
     apiGroup: ""
     kind: Namespace
     name: workload-ns
+---
+# ============ 3. The root app: syncs apps/, one child Application per layer =========================
+# prune: true is safe here: the cluster, attach and add-on children carry no finalizer, so pruning an
+# Application object from Git never deletes the Cluster, add-ons or ManagedEntity.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd-instance-1
+spec:
+  project: platform-root
+  source:
+    repoURL: https://github.com/skandpurohit/vks-argocd-app-of-apps.git
+    targetRevision: main             # PROD: pin a tag or SHA and bump it by pull request
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc   # TEST: was name: argocd-instance-1
+    namespace: argocd-instance-1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff: {duration: 30s, factor: 2, maxDuration: 10m}
