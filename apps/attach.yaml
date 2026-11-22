@@ -4,7 +4,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cl01-attach
+  name: clus01-attach
   namespace: argocd-instance-1
 spec:
   project: platform-root
