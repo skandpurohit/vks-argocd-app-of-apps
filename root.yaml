@@ -115,3 +115,19 @@ spec:
     retry:
       limit: 10
       backoff: {duration: 30s, factor: 2, maxDuration: 10m}
+---
+---
+apiVersion: argocd-service.vsphere.vmware.com/v1alpha1
+kind: ManagedEntity
+metadata:
+  name: ns-argocd-instance-1
+  namespace: argocd-instance-1
+spec:
+  clusterName: argocd-instance-1
+  argoCDProject: platform-root
+  secretLabels:
+    type: platform
+  targetRef:
+    apiGroup: ""
+    kind: Namespace
+    name: argocd-instance-1
