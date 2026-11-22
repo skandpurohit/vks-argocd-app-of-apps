@@ -1,0 +1,89 @@
+# Lab cluster template, as supplied. Three GitOps edits, each marked "GITOPS":
+#   1. annotation  Delete=false,Prune=false  -> Argo CD can never delete this cluster, even by mistake
+#   2. label       helm-controller: managed  -> lets the Helm-based add-on (external-secrets) install on class 3.6
+#   3. variable    vsphereOptions            -> sets a default StorageClass so Prometheus PVCs bind
+# [Verify] class v3.6.0 with KR v1.37.1 works in this lab (it did for the template author).
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+#define the cluster
+metadata:
+  #user-defined name of the cluster; string
+  name: clus01
+  #kubernetes namespace for the cluster; string
+  namespace: workload-ns
+  labels:
+    #GITOPS: class <= 3.6 needs this label for Helm-based add-ons. Class >= 3.7 sets it automatically. [Doc]
+    addon.addons.kubernetes.vmware.com/helm-controller: managed
+  annotations:
+    #GITOPS: removing this file or deleting the Application must NEVER delete the cluster
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+#define the desired state of cluster
+spec:
+  #specify the cluster network; required, there is no default
+  clusterNetwork:
+    #network ranges from which service VIPs are allocated
+    services:
+      #ranges of network addresses; string array
+      #CAUTION: must not overlap with Supervisor
+      cidrBlocks: ["10.96.0.0/12"]
+    #network ranges from which Pod networks are allocated
+    pods:
+      #ranges of network addresses; string array
+      #CAUTION: must not overlap with Supervisor
+      cidrBlocks: ["192.168.0.0/16"]
+    #domain name for services; string
+    serviceDomain: "cluster.local"
+  #specify the topology for the cluster
+  topology:
+    #name of the ClusterClass object to derive the topology
+    classRef:
+      name: builtin-generic-v3.6.0
+      namespace: vmware-system-vks-public
+    #kubernetes version of the cluster; format is KR NAME
+    version: v1.37.1---vmware.4-vkr.1
+    #describe the cluster control plane
+    controlPlane:
+      #number of control plane nodes
+      #integer value 1 or 3
+      #NOTE: Production clusters require 3 control plane nodes
+      replicas: 1
+    #describe the cluster worker nodes
+    workers:
+      #specifies parameters for a set of worker nodes in the topology
+      machineDeployments:
+        #node pool class used to create the set of worker nodes
+        - class: node-pool
+          #user-defined name of the node pool; string
+          name: node-pool-1
+          #number of worker nodes in this pool; integer 0 or more
+          replicas: 3
+    #customize the cluster
+    variables:
+      #virtual machine class type and size for cluster nodes
+      - name: vmClass
+        value: best-effort-large
+      - name: bootstrapAddons
+        value:
+          cniRef:
+            name: antrea
+            namespace: vmware-system-vks-public
+      #persistent storage class for cluster nodes
+      - name: storageClass
+        value: vsan-esa-default-policy-raid5
+      - name: volumes
+        value:
+          - name: containerd
+            capacity: 100Gi
+            mountPath: /var/lib/containerd
+            storageClass: vsan-esa-default-policy-raid5
+          - name: kubelet
+            capacity: 100Gi
+            mountPath: /var/lib/kubelet
+            storageClass: vsan-esa-default-policy-raid5
+      #GITOPS: default StorageClass INSIDE the cluster (class >= 3.2). The default must also be in the available list. [Doc]
+      - name: vsphereOptions
+        value:
+          persistentVolumes:
+            availableStorageClasses:
+              - vsan-esa-default-policy-raid5
+            defaultStorageClass: vsan-esa-default-policy-raid5
