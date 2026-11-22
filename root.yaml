@@ -13,4 +13,22 @@ spec:
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
     - {group: argoproj.io, kind: Application}
-    - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity}
+    - {group: argocd-service.vsphere.vmware.com, kind: ManagedEntity} 
+---
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vks-cluster
+  namespace: argocd-instance-1
+spec:
+  description: VKS cluster and its add-ons, declared in the cluster's Supervisor Namespace.
+  sourceRepos:
+    - https://github.com/skandpurohit/vks-argocd-app-of-apps.git
+  destinations:
+    - {name: workload-ns, namespace: workload-ns}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: cluster.x-k8s.io, kind: Cluster}
+    - {group: addons.kubernetes.vmware.com, kind: AddonInstall}
+    - {group: addons.kubernetes.vmware.com, kind: AddonConfig}
