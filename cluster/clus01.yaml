@@ -37,7 +37,7 @@ spec:
   topology:
     #name of the ClusterClass object to derive the topology
     classRef:
-      name: builtin-generic-v3.6.0
+      name: builtin-generic-v3.8.0
       namespace: vmware-system-vks-public
     #kubernetes version of the cluster; format is KR NAME
     version: v1.37.1---vmware.4-vkr.1
