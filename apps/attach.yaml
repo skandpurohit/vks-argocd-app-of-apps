@@ -9,7 +9,7 @@ metadata:
 spec:
   project: platform-root
   source:
-    repoURL: https://github.com/skandpurohit/vks-gitops.git
+    repoURL: https://github.com/skandpurohit/vks-argocd-app-of-apps.git
     targetRevision: main
     path: attach
   destination:
